@@ -276,6 +276,74 @@
         updateDisplay();
       }
 
+      /**
+       * Read the raw initial value from the URL query string.
+       * Accepted parameters: ?value=... or ?v=...
+       * Returns the raw string (trimmed), or null if absent.
+       * Does NOT validate — validation is done separately.
+       */
+      function getRawValueFromUrl() {
+        try {
+          const params = new URLSearchParams(window.location.search);
+          const raw = params.get('value') ?? params.get('v');
+          if (raw === null) return null;
+          const trimmed = raw.trim();
+          return trimmed === '' ? null : trimmed;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      /**
+       * Validate a raw string as a numeric value suitable for the calculator.
+       * Rules:
+       *  - Must match optional sign, digits, single decimal point.
+       *  - Must be a finite number.
+       * Returns { valid: true, value: "<normalized string>" }
+       *      or { valid: false, value: "0" }.
+       */
+      function validateValue(raw) {
+        if (raw === null || raw === undefined) {
+          return { valid: false, value: '0' };
+        }
+        // Allow optional sign, digits, one decimal point
+        if (!/^[+-]?(\d+\.?\d*|\.\d+)$/.test(raw)) {
+          return { valid: false, value: '0' };
+        }
+        const num = Number(raw);
+        if (!Number.isFinite(num)) {
+          return { valid: false, value: '0' };
+        }
+        // Normalize: strip leading zeros / trailing dot, keep as string
+        return { valid: true, value: num.toString() };
+      }
+
+      /**
+       * Initialize the calculator with an optional raw initial value.
+       * - The raw value (even if invalid) is shown in the expression line
+       *   so the user can see what was supplied.
+       * - The result field shows the validated value, or '0' if invalid.
+       */
+      function initialize(rawValue) {
+        resetAll();
+
+        if (rawValue !== null && rawValue !== undefined) {
+          const result = validateValue(rawValue);
+
+          if (result.valid) {
+            currentInput = result.value;
+            expression = 'Start: ' + rawValue;
+          } else {
+            // Show the invalid raw input in the expression line,
+            // but keep the result field at 0.
+            currentInput = '0';
+            expression = 'Invalid: ' + rawValue;
+          }
+        }
+
+        updateDisplay();
+      }
+
       // Perform calculation for two operands
       function calculate(a, op, b) {
         const numA = parseFloat(a);
@@ -549,13 +617,15 @@
         }
       });
 
-      // initial display
-      resetAll();
+      // ----- Startup: read initial value, validate, and show -----
+      const rawValue = getRawValueFromUrl();
+      initialize(rawValue);
+
     })();
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
+        navigator.serviceWorker.register('./sw.js', { scope: './' })
           .then((reg) => console.log('SW registered:', reg.scope))
           .catch((err) => console.error('SW registration failed:', err));
       });
